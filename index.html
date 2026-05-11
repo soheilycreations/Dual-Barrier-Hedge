@@ -383,31 +383,133 @@ function calcBB(prices, period, std){
 }
 
 // ── Connect to Deriv ──
-function connectDeriv(){
+async function connectDeriv(){
   // Clean token — allow letters, numbers, underscores (Deriv PAT format: pat_xxxx)
   let rawToken = document.getElementById('tokenInput').value;
   apiToken = rawToken.replace(/[^a-zA-Z0-9_]/g, '').trim();
-  
-  if(!apiToken){ setConnStatus('err', '⚠ Token එකක් paste කරන්න!'); return; }
 
-  // Basic validation to check if it looks like a token
+  if(!apiToken){ setConnStatus('err', '⚠ Token එකක් paste කරන්න!'); return; }
   if(apiToken.length < 8){
-    setConnStatus('err', `❌ Invalid token format (Length: ${apiToken.length})`);
+    setConnStatus('err', `❌ Token too short (Length: ${apiToken.length})`);
     return;
   }
 
   connectionError = false;
-  setConnStatus('connecting', '🔄 Connecting to Deriv…');
   document.getElementById('btnConnect').disabled = true;
 
   let appId = document.getElementById('appIdInput').value.trim();
   if(!appId) appId = '1089';
-  const derivWsUrl = `wss://ws.binaryws.com/websockets/v3?app_id=${appId}`;
-  log(`🔍 Using App ID: ${appId} | Token length: ${apiToken.length}`, 'sys');
+
+  // ── Detect PAT token (new Deriv API) ──
+  if(apiToken.startsWith('pat_')){
+    log(`🔑 PAT token detected — using new Deriv API flow`, 'sys');
+    await connectDerivPAT(apiToken, appId);
+  } else {
+    log(`🔍 Legacy token detected | App ID: ${appId} | Length: ${apiToken.length}`, 'sys');
+    connectDerivLegacy(apiToken, appId);
+  }
+}
+
+// ── New PAT Flow (REST → OTP → WebSocket) ──
+async function connectDerivPAT(token, appId){
+  setConnStatus('connecting', '🔄 Fetching Deriv accounts…');
 
   try {
-    ws = new WebSocket(derivWsUrl);
+    // Step 1: Get account list
+    const accountsRes = await fetch('https://api.deriv.com/trading/v1/options/accounts', {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Deriv-App-ID': appId,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if(!accountsRes.ok){
+      const errText = await accountsRes.text();
+      connectionError = true;
+      setConnStatus('err', `❌ Auth failed (${accountsRes.status}) — App ID හෝ Token check කරන්න`);
+      log(`❌ Accounts fetch failed: ${accountsRes.status} — ${errText}`, 'loss');
+      document.getElementById('btnConnect').disabled = false;
+      return;
+    }
+
+    const accounts = await accountsRes.json();
+    log(`✅ Accounts: ${JSON.stringify(accounts).substring(0,200)}`, 'sys');
+
+    // Find demo account (virtual)
+    const accountList = Array.isArray(accounts) ? accounts : (accounts.data || accounts.accounts || [accounts]);
+    const demoAcc = accountList.find(a => a.is_virtual || a.account_type === 'demo' || (a.account_id||'').startsWith('VRT')) || accountList[0];
+
+    if(!demoAcc){
+      connectionError = true;
+      setConnStatus('err', '❌ Account list empty — permissions check කරන්න');
+      document.getElementById('btnConnect').disabled = false;
+      return;
+    }
+
+    const accountId = demoAcc.account_id || demoAcc.id || demoAcc.loginid;
+    log(`📋 Using account: ${accountId}`, 'sys');
+    setConnStatus('connecting', `🔄 Getting WebSocket URL for ${accountId}…`);
+
+    // Step 2: Get OTP WebSocket URL
+    const otpRes = await fetch(`https://api.deriv.com/trading/v1/options/accounts/${accountId}/otp`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Deriv-App-ID': appId,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if(!otpRes.ok){
+      const errText = await otpRes.text();
+      connectionError = true;
+      setConnStatus('err', `❌ OTP failed (${otpRes.status})`);
+      log(`❌ OTP fetch failed: ${otpRes.status} — ${errText}`, 'loss');
+      document.getElementById('btnConnect').disabled = false;
+      return;
+    }
+
+    const otpData = await otpRes.json();
+    log(`🔐 OTP Response: ${JSON.stringify(otpData).substring(0,300)}`, 'sys');
+
+    const wsUrl = otpData.websocket_url || otpData.url || otpData.ws_url;
+    if(!wsUrl){
+      connectionError = true;
+      setConnStatus('err', '❌ WebSocket URL not found in OTP response');
+      document.getElementById('btnConnect').disabled = false;
+      return;
+    }
+
+    log(`🔌 Connecting to: ${wsUrl.substring(0,80)}…`, 'sys');
+    connectWebSocket(wsUrl, false); // false = no authorize message needed (OTP handles it)
+
   } catch(e){
+    connectionError = true;
+    if(e.name === 'TypeError' && e.message.includes('fetch')){
+      setConnStatus('err', '❌ CORS blocked — Browser fetch rejected by Deriv API');
+      log(`❌ CORS Error: ${e.message}`, 'loss');
+    } else {
+      setConnStatus('err', `❌ Error: ${e.message}`);
+      log(`❌ PAT flow error: ${e.message}`, 'loss');
+    }
+    document.getElementById('btnConnect').disabled = false;
+  }
+}
+
+// ── Legacy Flow (direct WebSocket with authorize) ──
+function connectDerivLegacy(token, appId){
+  setConnStatus('connecting', '🔄 Connecting to Deriv (Legacy)…');
+  const wsUrl = `wss://ws.binaryws.com/websockets/v3?app_id=${appId}`;
+  connectWebSocket(wsUrl, true); // true = send authorize message
+}
+
+// ── WebSocket Connector ──
+function connectWebSocket(wsUrl, needsAuth){
+  try {
+    ws = new WebSocket(wsUrl);
+  } catch(e){
+    connectionError = true;
     setConnStatus('err', '❌ WebSocket error: ' + e.message);
     document.getElementById('btnConnect').disabled = false;
     return;
@@ -415,8 +517,20 @@ function connectDeriv(){
 
   ws.onopen = () => {
     log('🔌 WebSocket connected to Deriv', 'sys');
-    // Authorize
-    wsSend({ authorize: apiToken });
+    if(needsAuth){
+      wsSend({ authorize: apiToken });
+    } else {
+      // PAT/OTP already authenticated — subscribe directly
+      log('✅ OTP authenticated — subscribing to market data…', 'win');
+      setConnStatus('live', '✅ Connected via PAT');
+      document.getElementById('balanceBadge').style.display = 'flex';
+      document.getElementById('btnDisconnect').disabled = false;
+      document.getElementById('btnStart').disabled = false;
+      document.getElementById('statusDot').className = 'status-dot live';
+      document.getElementById('statusText').textContent = 'CONNECTED';
+      subscribeTicks();
+      wsSend({ balance: 1, subscribe: 1 });
+    }
   };
 
   ws.onmessage = (evt) => {
@@ -425,7 +539,8 @@ function connectDeriv(){
   };
 
   ws.onerror = () => {
-    setConnStatus('err', '❌ Connection failed — token check කරන්න');
+    connectionError = true;
+    setConnStatus('err', '❌ Connection failed');
     document.getElementById('btnConnect').disabled = false;
     document.getElementById('btnDisconnect').disabled = true;
   };
@@ -437,7 +552,6 @@ function connectDeriv(){
     document.getElementById('btnDisconnect').disabled = true;
     document.getElementById('btnStart').disabled = true;
     botRunning = false;
-    // Only show "connection closed" if no real error already shown
     if(!connectionError){
       setConnStatus('err', '⚡ Connection closed');
     }
