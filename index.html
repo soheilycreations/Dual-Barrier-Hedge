@@ -410,89 +410,49 @@ async function connectDeriv(){
   }
 }
 
-// ── New PAT Flow (REST → OTP → WebSocket) ──
+// ── New PAT Flow (via Vercel serverless proxy → OTP → WebSocket) ──
 async function connectDerivPAT(token, appId){
-  setConnStatus('connecting', '🔄 Fetching Deriv accounts…');
+  setConnStatus('connecting', '🔄 Fetching Deriv accounts via proxy…');
 
   try {
-    // Step 1: Get account list
-    const accountsRes = await fetch('https://api.deriv.com/trading/v1/options/accounts', {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Deriv-App-ID': appId,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    if(!accountsRes.ok){
-      const errText = await accountsRes.text();
-      connectionError = true;
-      setConnStatus('err', `❌ Auth failed (${accountsRes.status}) — App ID හෝ Token check කරන්න`);
-      log(`❌ Accounts fetch failed: ${accountsRes.status} — ${errText}`, 'loss');
-      document.getElementById('btnConnect').disabled = false;
-      return;
-    }
-
-    const accounts = await accountsRes.json();
-    log(`✅ Accounts: ${JSON.stringify(accounts).substring(0,200)}`, 'sys');
-
-    // Find demo account (virtual)
-    const accountList = Array.isArray(accounts) ? accounts : (accounts.data || accounts.accounts || [accounts]);
-    const demoAcc = accountList.find(a => a.is_virtual || a.account_type === 'demo' || (a.account_id||'').startsWith('VRT')) || accountList[0];
-
-    if(!demoAcc){
-      connectionError = true;
-      setConnStatus('err', '❌ Account list empty — permissions check කරන්න');
-      document.getElementById('btnConnect').disabled = false;
-      return;
-    }
-
-    const accountId = demoAcc.account_id || demoAcc.id || demoAcc.loginid;
-    log(`📋 Using account: ${accountId}`, 'sys');
-    setConnStatus('connecting', `🔄 Getting WebSocket URL for ${accountId}…`);
-
-    // Step 2: Get OTP WebSocket URL
-    const otpRes = await fetch(`https://api.deriv.com/trading/v1/options/accounts/${accountId}/otp`, {
+    // Call our serverless proxy (avoids CORS issues)
+    const proxyRes = await fetch('/api/connect', {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Deriv-App-ID': appId,
-        'Content-Type': 'application/json'
-      }
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, appId, preferDemo: true })
     });
 
-    if(!otpRes.ok){
-      const errText = await otpRes.text();
+    const data = await proxyRes.json();
+
+    if (!proxyRes.ok) {
       connectionError = true;
-      setConnStatus('err', `❌ OTP failed (${otpRes.status})`);
-      log(`❌ OTP fetch failed: ${otpRes.status} — ${errText}`, 'loss');
+      setConnStatus('err', `❌ Auth failed — ${data.error || proxyRes.status}`);
+      log(`❌ Proxy error: ${data.error} | ${data.detail || ''}`, 'loss');
       document.getElementById('btnConnect').disabled = false;
       return;
     }
 
-    const otpData = await otpRes.json();
-    log(`🔐 OTP Response: ${JSON.stringify(otpData).substring(0,300)}`, 'sys');
+    log(`✅ Account: ${data.loginid} | Balance: ${data.balance} ${data.currency}`, 'win');
+    log(`🔐 WebSocket URL received — connecting…`, 'sys');
 
-    const wsUrl = otpData.websocket_url || otpData.url || otpData.ws_url;
-    if(!wsUrl){
+    if (!data.wsUrl) {
       connectionError = true;
-      setConnStatus('err', '❌ WebSocket URL not found in OTP response');
+      setConnStatus('err', '❌ No WebSocket URL returned from proxy');
       document.getElementById('btnConnect').disabled = false;
       return;
     }
 
-    log(`🔌 Connecting to: ${wsUrl.substring(0,80)}…`, 'sys');
-    connectWebSocket(wsUrl, false); // false = no authorize message needed (OTP handles it)
+    // Update balance display early
+    document.getElementById('balanceBadge').style.display = 'flex';
+    document.getElementById('balanceVal').textContent = `${data.balance} ${data.currency}`;
+    document.getElementById('accountId').textContent = data.loginid;
+
+    connectWebSocket(data.wsUrl, false); // OTP already authenticated — no authorize needed
 
   } catch(e){
     connectionError = true;
-    if(e.name === 'TypeError' && e.message.includes('fetch')){
-      setConnStatus('err', '❌ CORS blocked — Browser fetch rejected by Deriv API');
-      log(`❌ CORS Error: ${e.message}`, 'loss');
-    } else {
-      setConnStatus('err', `❌ Error: ${e.message}`);
-      log(`❌ PAT flow error: ${e.message}`, 'loss');
-    }
+    setConnStatus('err', `❌ Proxy error: ${e.message}`);
+    log(`❌ PAT proxy error: ${e.message}`, 'loss');
     document.getElementById('btnConnect').disabled = false;
   }
 }
