@@ -384,9 +384,9 @@ function calcBB(prices, period, std){
 
 // ── Connect to Deriv ──
 function connectDeriv(){
-  // Extract and strictly clean the token (only alphanumeric characters)
+  // Clean token — allow letters, numbers, underscores (Deriv PAT format: pat_xxxx)
   let rawToken = document.getElementById('tokenInput').value;
-  apiToken = rawToken.replace(/[^a-zA-Z0-9]/g, '');
+  apiToken = rawToken.replace(/[^a-zA-Z0-9_]/g, '').trim();
   
   if(!apiToken){ setConnStatus('err', '⚠ Token එකක් paste කරන්න!'); return; }
 
