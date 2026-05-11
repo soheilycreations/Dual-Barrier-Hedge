@@ -184,8 +184,9 @@
   <div class="connect-panel" id="connectPanel">
     <div class="connect-title">Deriv Live Connection</div>
     <div class="token-row">
+      <input type="text" class="token-input" id="appIdInput" placeholder="App ID (1089)" value="1089" style="flex:0.3; min-width:80px; text-align:center;"/>
       <input type="password" class="token-input" id="tokenInput"
-        placeholder="ඔයාගේ Deriv API Token එක මෙතට paste කරන්න…"
+        placeholder="Deriv API Token එක මෙතනට paste කරන්න…"
         autocomplete="off" spellcheck="false"/>
       <button class="btn-connect" id="btnConnect" onclick="connectDeriv()">🔌 Connect</button>
       <button class="btn-connect" style="border-color:var(--red);color:var(--red);background:rgba(255,45,85,.1)" id="btnDisconnect" onclick="disconnectDeriv()" disabled>✕ Disconnect</button>
@@ -334,7 +335,6 @@
 //  All logic runs locally in your browser — safe!
 // ════════════════════════════════════════════════════
 
-const DERIV_WS_URL  = 'wss://ws.binaryws.com/websockets/v3?app_id=1089';
 const SYMBOL        = 'R_100';       // Volatility 100 (1s)
 const BB_PERIOD     = 20;
 const BB_STD        = 2;
@@ -398,8 +398,12 @@ function connectDeriv(){
   setConnStatus('connecting', '🔄 Connecting to Deriv…');
   document.getElementById('btnConnect').disabled = true;
 
+  let appId = document.getElementById('appIdInput').value.trim();
+  if(!appId) appId = '1089';
+  const derivWsUrl = `wss://ws.binaryws.com/websockets/v3?app_id=${appId}`;
+
   try {
-    ws = new WebSocket(DERIV_WS_URL);
+    ws = new WebSocket(derivWsUrl);
   } catch(e){
     setConnStatus('err', '❌ WebSocket error: ' + e.message);
     document.getElementById('btnConnect').disabled = false;
