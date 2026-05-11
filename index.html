@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Dual-Barrier Hedge Bot — LIVE</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg:#040810;--panel:#080f1e;--border:#0d2444;
+    --cyan:#00f5ff;--green:#00ff88;--red:#ff2d55;
+    --yellow:#ffd60a;--dim:#1a3a5c;--text:#c8e6ff;
+    --mono:'Share Tech Mono',monospace;--display:'Orbitron',sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--mono);min-height:100vh;overflow-x:hidden;}
+  body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+    background-image:linear-gradient(rgba(0,245,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,245,255,.03) 1px,transparent 1px);
+    background-size:40px 40px;}
+  .wrapper{position:relative;z-index:1;max-width:1100px;margin:0 auto;padding:20px 16px;}
+
+  /* ── Connect Panel ── */
+  .connect-panel{
+    background:var(--panel);border:1px solid var(--cyan);border-radius:6px;
+    padding:24px;margin-bottom:24px;
+    box-shadow:0 0 30px rgba(0,245,255,.08);
+  }
+  .connect-title{
+    font-family:var(--display);font-size:.75rem;letter-spacing:.18em;
+    color:var(--cyan);text-transform:uppercase;margin-bottom:16px;
+    display:flex;align-items:center;gap:10px;
+  }
+  .connect-title::before{content:'//';color:var(--dim);}
+  .token-row{display:flex;gap:10px;align-items:stretch;}
+  .token-input{
+    flex:1;background:#020609;border:1px solid var(--border);
+    border-radius:4px;padding:12px 16px;
+    font-family:var(--mono);font-size:.8rem;color:var(--cyan);
+    outline:none;letter-spacing:.05em;
+    transition:border-color .2s;
+  }
+  .token-input:focus{border-color:var(--cyan);box-shadow:0 0 12px rgba(0,245,255,.15);}
+  .token-input::placeholder{color:#2a5070;}
+  .btn-connect{
+    padding:12px 24px;border:1px solid var(--green);border-radius:4px;
+    font-family:var(--display);font-size:.65rem;font-weight:700;
+    letter-spacing:.15em;text-transform:uppercase;cursor:pointer;
+    background:rgba(0,255,136,.1);color:var(--green);
+    transition:all .2s;white-space:nowrap;
+  }
+  .btn-connect:hover{background:rgba(0,255,136,.2);box-shadow:0 0 16px rgba(0,255,136,.3);}
+  .btn-connect:disabled{opacity:.4;cursor:not-allowed;}
+  .conn-status{
+    margin-top:12px;font-size:.7rem;padding:8px 12px;
+    border-radius:3px;border:1px solid var(--border);
+    display:flex;align-items:center;gap:8px;
+  }
+  .conn-dot{width:8px;height:8px;border-radius:50%;background:var(--dim);flex-shrink:0;}
+  .conn-dot.live{background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 1.4s infinite;}
+  .conn-dot.err{background:var(--red);}
+  .conn-dot.connecting{background:var(--yellow);animation:pulse .8s infinite;}
+  .hints{margin-top:14px;font-size:.65rem;color:#2a5070;line-height:1.9;}
+  .hints span{color:#3a6080;}
+
+  /* ── Header ── */
+  header{display:flex;align-items:center;justify-content:space-between;
+    border-bottom:1px solid var(--border);padding-bottom:16px;margin-bottom:24px;}
+  .logo{font-family:var(--display);font-size:1.1rem;font-weight:900;color:var(--cyan);
+    letter-spacing:.12em;text-shadow:0 0 18px rgba(0,245,255,.6);}
+  .logo span{color:var(--green);}
+  .status-row{display:flex;align-items:center;gap:10px;font-size:.8rem;color:var(--green);}
+  .status-dot{width:10px;height:10px;border-radius:50%;background:var(--dim);box-shadow:0 0 10px var(--dim);}
+  .status-dot.live{background:var(--green);box-shadow:0 0 10px var(--green);animation:pulse 1.4s infinite;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+  /* ── KPI strip ── */
+  .kpi-strip{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:24px;}
+  .kpi{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:14px 16px;position:relative;overflow:hidden;}
+  .kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--cyan),var(--green));}
+  .kpi-label{font-size:.6rem;letter-spacing:.12em;color:#5a8cbf;text-transform:uppercase;margin-bottom:8px;}
+  .kpi-val{font-family:var(--display);font-size:1.3rem;font-weight:700;color:var(--cyan);text-shadow:0 0 14px rgba(0,245,255,.4);}
+  .kpi-val.pos{color:var(--green);text-shadow:0 0 14px rgba(0,255,136,.4);}
+  .kpi-val.neg{color:var(--red);text-shadow:0 0 14px rgba(255,45,85,.4);}
+  .kpi-sub{font-size:.6rem;color:#2a5070;margin-top:4px;}
+
+  /* ── Main grid ── */
+  .main-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:16px;}
+  .panel-title{font-family:var(--display);font-size:.65rem;letter-spacing:.15em;color:var(--cyan);
+    text-transform:uppercase;margin-bottom:14px;display:flex;align-items:center;gap:8px;}
+  .panel-title::before{content:'//';color:var(--dim);}
+
+  /* ── Live Price ── */
+  .live-price{
+    font-family:var(--display);font-size:2rem;font-weight:900;
+    color:var(--cyan);text-shadow:0 0 20px rgba(0,245,255,.5);
+    letter-spacing:.05em;margin:8px 0;
+  }
+  .price-change{font-size:.75rem;margin-bottom:12px;}
+  .price-change.up{color:var(--green);}
+  .price-change.down{color:var(--red);}
+
+  /* ── BB Gauge ── */
+  .gauge-track{height:8px;background:var(--border);border-radius:4px;margin:8px 0;overflow:hidden;}
+  .gauge-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,var(--red),var(--yellow),var(--green));transition:width .4s ease;box-shadow:0 0 10px rgba(0,255,136,.4);}
+  .gauge-labels{display:flex;justify-content:space-between;font-size:.6rem;color:#3a6080;}
+  .state-badge{display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:3px;
+    font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;border:1px solid;}
+  .state-badge.active{border-color:var(--green);color:var(--green);background:rgba(0,255,136,.08);}
+  .state-badge.paused{border-color:var(--yellow);color:var(--yellow);background:rgba(255,214,10,.08);}
+  .state-badge.stopped{border-color:var(--red);color:var(--red);background:rgba(255,45,85,.08);}
+  .state-badge.cooldown{border-color:#a855f7;color:#a855f7;background:rgba(168,85,247,.08);}
+
+  /* ── Contract cards ── */
+  .contract-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;}
+  .contract-card{border:1px solid var(--border);border-radius:4px;padding:12px;background:rgba(8,15,30,.8);}
+  .contract-card.win{border-color:var(--green);background:rgba(0,255,136,.05);}
+  .contract-card.lose{border-color:var(--red);background:rgba(255,45,85,.05);}
+  .cc-type{font-family:var(--display);font-size:.6rem;letter-spacing:.12em;color:#5a8cbf;margin-bottom:6px;}
+  .cc-badge{font-family:var(--display);font-size:.65rem;letter-spacing:.1em;}
+  .cc-result{font-size:.78rem;margin-top:6px;}
+  .cc-result.win{color:var(--green);}
+  .cc-result.lose{color:var(--red);}
+  .cc-result.pending{color:var(--yellow);}
+
+  /* ── Martingale ── */
+  .mart-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;}
+  .mart-step{padding:4px 10px;font-size:.68rem;border-radius:2px;border:1px solid var(--border);color:#3a6080;}
+  .mart-step.active{border-color:var(--yellow);color:var(--yellow);background:rgba(255,214,10,.1);}
+  .mart-step.done{border-color:var(--red);color:var(--red);background:rgba(255,45,85,.08);}
+
+  /* ── Bars ── */
+  .bar-wrap{margin:10px 0;}
+  .bar-label{display:flex;justify-content:space-between;font-size:.65rem;color:#5a8cbf;margin-bottom:4px;}
+  .bar-track{height:6px;background:var(--border);border-radius:3px;overflow:hidden;}
+  .bar-tp{height:100%;background:linear-gradient(90deg,#00c26b,var(--green));border-radius:3px;transition:width .5s;}
+  .bar-sl{height:100%;background:linear-gradient(90deg,var(--red),#ff6b8a);border-radius:3px;transition:width .5s;}
+
+  /* ── Console ── */
+  .console{background:#020609;border:1px solid var(--border);border-radius:4px;padding:12px;height:220px;overflow-y:auto;font-size:.68rem;line-height:1.8;}
+  .console::-webkit-scrollbar{width:4px;}
+  .console::-webkit-scrollbar-track{background:var(--border);}
+  .console::-webkit-scrollbar-thumb{background:var(--dim);}
+  .log-line{display:flex;gap:8px;}
+  .log-ts{color:#2a5070;flex-shrink:0;}
+  .log-msg.info{color:var(--cyan);}
+  .log-msg.win{color:var(--green);}
+  .log-msg.loss{color:var(--red);}
+  .log-msg.warn{color:var(--yellow);}
+  .log-msg.sys{color:#5a8cbf;}
+
+  /* ── Controls ── */
+  .controls{display:flex;gap:10px;margin-top:16px;}
+  .btn{flex:1;padding:12px;border:1px solid;border-radius:3px;font-family:var(--display);
+    font-size:.65rem;font-weight:700;letter-spacing:.15em;text-transform:uppercase;
+    cursor:pointer;transition:all .2s;background:transparent;}
+  .btn-start{border-color:var(--green);color:var(--green);}
+  .btn-start:hover:not(:disabled){background:rgba(0,255,136,.12);box-shadow:0 0 16px rgba(0,255,136,.3);}
+  .btn-stop{border-color:var(--red);color:var(--red);}
+  .btn-stop:hover:not(:disabled){background:rgba(255,45,85,.12);box-shadow:0 0 16px rgba(255,45,85,.3);}
+  .btn-reset{border-color:var(--dim);color:#5a8cbf;}
+  .btn-reset:hover{background:rgba(90,140,191,.12);}
+  .btn:disabled{opacity:.35;cursor:not-allowed;}
+
+  /* ── Balance badge ── */
+  .balance-badge{
+    display:flex;align-items:center;gap:8px;
+    background:rgba(0,255,136,.06);border:1px solid rgba(0,255,136,.2);
+    border-radius:4px;padding:8px 14px;margin-top:12px;
+    font-size:.75rem;
+  }
+  .balance-val{font-family:var(--display);color:var(--green);font-size:.9rem;}
+
+  @media(max-width:680px){
+    .kpi-strip{grid-template-columns:repeat(2,1fr);}
+    .main-grid{grid-template-columns:1fr;}
+  }
+</style>
+</head>
+<body>
+<div class="wrapper">
+
+  <!-- ═══ CONNECT PANEL ═══ -->
+  <div class="connect-panel" id="connectPanel">
+    <div class="connect-title">Deriv Live Connection</div>
+    <div class="token-row">
+      <input type="password" class="token-input" id="tokenInput"
+        placeholder="ඔයාගේ Deriv API Token එක මෙතට paste කරන්න…"
+        autocomplete="off" spellcheck="false"/>
+      <button class="btn-connect" id="btnConnect" onclick="connectDeriv()">🔌 Connect</button>
+      <button class="btn-connect" style="border-color:var(--red);color:var(--red);background:rgba(255,45,85,.1)" id="btnDisconnect" onclick="disconnectDeriv()" disabled>✕ Disconnect</button>
+    </div>
+    <div class="conn-status" id="connStatus">
+      <div class="conn-dot" id="connDot"></div>
+      <span id="connMsg">Token එක paste කරලා Connect click කරන්න</span>
+    </div>
+    <div class="balance-badge" id="balanceBadge" style="display:none">
+      💰 Account Balance: <span class="balance-val" id="balanceVal">—</span>
+      &nbsp;|&nbsp; Account: <span style="color:var(--cyan)" id="accountId">—</span>
+    </div>
+    <div class="hints">
+      <span>⚠ Token ඔයාගේ browser එකේ විතරයි store වෙන්නේ — server එකකට යන්නේ නෑ.</span><br/>
+      Token හදන්නේ: <span>app.deriv.com → Account Settings → Security &amp; Safety → API Token</span><br/>
+      Permissions: <span>Read + Trade</span> tick කරන්න.
+    </div>
+  </div>
+
+  <!-- ═══ HEADER ═══ -->
+  <header>
+    <div class="logo">DUAL<span>·</span>BARRIER <span>HEDGE</span> BOT <span style="font-size:.6rem;color:#3a6080">LIVE</span></div>
+    <div class="status-row">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText">DISCONNECTED</span>
+    </div>
+  </header>
+
+  <!-- ═══ KPI STRIP ═══ -->
+  <div class="kpi-strip">
+    <div class="kpi">
+      <div class="kpi-label">Live Price</div>
+      <div class="kpi-val" id="kpiPrice">—</div>
+      <div class="kpi-sub" id="kpiPriceSub">Vol 100 (1s)</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">BB Width</div>
+      <div class="kpi-val" id="kpiBB">—</div>
+      <div class="kpi-sub">Threshold: 0.50</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Session P&amp;L</div>
+      <div class="kpi-val" id="kpiPnl">$0.00</div>
+      <div class="kpi-sub">Target: +$2.00</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Stake/Side</div>
+      <div class="kpi-val" id="kpiStake">$0.50</div>
+      <div class="kpi-sub">Martingale: 2.1x</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Rounds</div>
+      <div class="kpi-val" id="kpiRounds">0</div>
+      <div class="kpi-sub" id="kpiWR">Win Rate: —</div>
+    </div>
+  </div>
+
+  <!-- ═══ MAIN GRID ═══ -->
+  <div class="main-grid">
+
+    <!-- Left -->
+    <div>
+      <div class="panel" style="margin-bottom:16px">
+        <div class="panel-title">Live Market Feed</div>
+        <div class="live-price" id="livePrice">—</div>
+        <div class="price-change" id="priceChange">● Awaiting connection…</div>
+
+        <div style="font-size:.65rem;color:#5a8cbf;margin-top:12px;margin-bottom:4px;">BB Width (20,2)</div>
+        <div class="gauge-track">
+          <div class="gauge-fill" id="bbGaugeFill" style="width:0%"></div>
+        </div>
+        <div class="gauge-labels"><span>0</span><span>▲ 0.5 Threshold</span><span>Wide</span></div>
+        <div style="margin-top:10px">
+          <span id="marketState" class="state-badge paused">⏸ Awaiting Data</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">Active Contracts</div>
+        <div class="contract-row">
+          <div class="contract-card" id="cardHigher">
+            <div class="cc-type">Contract A</div>
+            <div class="cc-badge" style="color:var(--green)">▲ HIGHER</div>
+            <div style="font-size:.7rem;color:#5a8cbf;margin-top:4px">Barrier: <span style="color:var(--cyan)">+0.60</span></div>
+            <div class="cc-result pending" id="resultHigh">● Pending</div>
+          </div>
+          <div class="contract-card" id="cardLower">
+            <div class="cc-type">Contract B</div>
+            <div class="cc-badge" style="color:var(--red)">▼ LOWER</div>
+            <div style="font-size:.7rem;color:#5a8cbf;margin-top:4px">Barrier: <span style="color:var(--cyan)">-0.60</span></div>
+            <div class="cc-result pending" id="resultLow">● Pending</div>
+          </div>
+        </div>
+
+        <div class="panel-title" style="margin-top:12px">Martingale Ladder</div>
+        <div class="mart-row" id="martRow">
+          <div class="mart-step active">$0.50</div>
+          <div class="mart-step">$1.05</div>
+          <div class="mart-step">$2.21</div>
+          <div class="mart-step">$4.63</div>
+        </div>
+        <div style="font-size:.6rem;color:#2a5070;margin-top:8px">⚠ Step 3 may breach SL — bot auto-stops</div>
+      </div>
+    </div>
+
+    <!-- Right -->
+    <div>
+      <div class="panel" style="margin-bottom:16px">
+        <div class="panel-title">Risk Management</div>
+        <div class="bar-wrap">
+          <div class="bar-label"><span>🎯 Take Profit</span><span id="tpLabel">$0.00 / $2.00</span></div>
+          <div class="bar-track"><div class="bar-tp" id="tpBar" style="width:0%"></div></div>
+        </div>
+        <div class="bar-wrap">
+          <div class="bar-label"><span>🛑 Stop Loss</span><span id="slLabel">$0.00 / $4.00</span></div>
+          <div class="bar-track"><div class="bar-sl" id="slBar" style="width:0%"></div></div>
+        </div>
+        <div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:.68rem;">
+          <div style="color:#5a8cbf">Wins: <span style="color:var(--green)" id="winCount">0</span></div>
+          <div style="color:#5a8cbf">Losses: <span style="color:var(--red)" id="lossCount">0</span></div>
+          <div style="color:#5a8cbf">Win Rate: <span style="color:var(--cyan)" id="winRate">—</span></div>
+          <div style="color:#5a8cbf">Consec Loss: <span style="color:var(--yellow)" id="consecLoss">0</span></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">Console Output</div>
+        <div class="console" id="console"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <button class="btn btn-start" id="btnStart" onclick="startBot()" disabled>▶ Start Bot</button>
+    <button class="btn btn-stop"  id="btnStop"  onclick="stopBot()"  disabled>■ Stop</button>
+    <button class="btn btn-reset" onclick="resetAll()">↺ Reset</button>
+  </div>
+
+</div>
+
+<script>
+// ════════════════════════════════════════════════════
+//  DERIV WEBSOCKET + DUAL BARRIER HEDGE BOT
+//  Connects to Deriv API using your personal token
+//  All logic runs locally in your browser — safe!
+// ════════════════════════════════════════════════════
+
+const DERIV_WS_URL  = 'wss://ws.binaryws.com/websockets/v3?app_id=1089';
+const SYMBOL        = 'R_100';       // Volatility 100 (1s)
+const BB_PERIOD     = 20;
+const BB_STD        = 2;
+const BB_THRESHOLD  = 0.5;
+const INITIAL_STAKE = 0.50;
+const MARTINGALE    = 2.1;
+const SL            = -4.00;
+const TP            =  2.00;
+const BARRIER_UP    =  0.6;
+const BARRIER_DN    = -0.6;
+const DURATION_T    =  5;            // 5 ticks
+const COOLDOWN_MS   = 10000;
+
+let ws = null;
+let apiToken = '';
+let ticks = [];           // rolling price history for BB calc
+let botRunning = false;
+let cooldown = false;
+let pendingContracts = {};
+
+let state = {
+  sessionPnl: 0, stake: INITIAL_STAKE,
+  wins: 0, losses: 0, consecLoss: 0, rounds: 0,
+};
+
+// ── Logging ──
+function ts(){ return new Date().toLocaleTimeString('en-GB',{hour12:false}); }
+function log(msg, type='info'){
+  const c = document.getElementById('console');
+  const d = document.createElement('div');
+  d.className = 'log-line';
+  d.innerHTML = `<span class="log-ts">[${ts()}]</span><span class="log-msg ${type}">${msg}</span>`;
+  c.appendChild(d);
+  c.scrollTop = c.scrollHeight;
+}
+
+// ── BB Calculation ──
+function calcBB(prices, period, std){
+  if(prices.length < period) return null;
+  const slice = prices.slice(-period);
+  const mean  = slice.reduce((a,b)=>a+b,0) / period;
+  const variance = slice.reduce((a,b)=>a+Math.pow(b-mean,2),0) / period;
+  const stddev = Math.sqrt(variance);
+  return { upper: mean + std*stddev, lower: mean - std*stddev, width: std*2*stddev, mid: mean };
+}
+
+// ── Connect to Deriv ──
+function connectDeriv(){
+  apiToken = document.getElementById('tokenInput').value.trim();
+  if(!apiToken){ setConnStatus('err', '⚠ Token එකක් paste කරන්න!'); return; }
+
+  // Basic validation to check if it looks like a token
+  if(apiToken.length < 8){
+    setConnStatus('err', '❌ Invalid token format — check කරලා ආයෙත් paste කරන්න');
+    return;
+  }
+
+  setConnStatus('connecting', '🔄 Connecting to Deriv…');
+  document.getElementById('btnConnect').disabled = true;
+
+  try {
+    ws = new WebSocket(DERIV_WS_URL);
+  } catch(e){
+    setConnStatus('err', '❌ WebSocket error: ' + e.message);
+    document.getElementById('btnConnect').disabled = false;
+    return;
+  }
+
+  ws.onopen = () => {
+    log('🔌 WebSocket connected to Deriv', 'sys');
+    // Authorize
+    wsSend({ authorize: apiToken });
+  };
+
+  ws.onmessage = (evt) => {
+    const msg = JSON.parse(evt.data);
+    handleMessage(msg);
+  };
+
+  ws.onerror = () => {
+    setConnStatus('err', '❌ Connection failed — token check කරන්න');
+    document.getElementById('btnConnect').disabled = false;
+    document.getElementById('btnDisconnect').disabled = true;
+  };
+
+  ws.onclose = () => {
+    setConnStatus('err', '⚡ Connection closed');
+    document.getElementById('statusDot').className = 'status-dot';
+    document.getElementById('statusText').textContent = 'DISCONNECTED';
+    document.getElementById('btnConnect').disabled = false;
+    document.getElementById('btnDisconnect').disabled = true;
+    document.getElementById('btnStart').disabled = true;
+    botRunning = false;
+  };
+}
+
+function disconnectDeriv(){
+  if(ws) ws.close();
+  botRunning = false;
+  document.getElementById('btnStop').disabled = true;
+  document.getElementById('btnStart').disabled = true;
+  log('⚡ Disconnected.', 'warn');
+}
+
+function wsSend(obj){
+  if(ws && ws.readyState === WebSocket.OPEN){
+    ws.send(JSON.stringify(obj));
+  }
+}
+
+// ── Message Handler ──
+function handleMessage(msg){
+
+  if(msg.error){
+    const errCode = msg.error.code || 'Unknown';
+    const errMsg = msg.error.message || 'No details provided';
+    log(`❌ API Error [${errCode}]: ${errMsg}`, 'loss');
+
+    if(errCode === 'InvalidToken'){
+      setConnStatus('err', '❌ Invalid token — token එක හරියට copy වුණාද බලන්න');
+    } else if(errCode === 'AuthorizationRequired'){
+      setConnStatus('err', '❌ Authorization required — token එකක් අවශ්‍යයි');
+    } else {
+      setConnStatus('err', `❌ Error: ${errCode}`);
+    }
+    document.getElementById('btnConnect').disabled = false;
+    return;
+  }
+
+  // Authorization response
+  if(msg.msg_type === 'authorize'){
+    const acc = msg.authorize;
+    setConnStatus('live', `✅ Connected — ${acc.email}`);
+    document.getElementById('balanceBadge').style.display = 'flex';
+    document.getElementById('balanceVal').textContent = `${acc.balance} ${acc.currency}`;
+    document.getElementById('accountId').textContent = acc.loginid;
+    document.getElementById('btnDisconnect').disabled = false;
+    document.getElementById('btnStart').disabled = false;
+    document.getElementById('statusDot').className = 'status-dot live';
+    document.getElementById('statusText').textContent = 'CONNECTED';
+    const scopes = acc.scopes || [];
+    log(`✅ Authorized: ${acc.loginid} | Balance: ${acc.balance} ${acc.currency}`, 'win');
+    log(`🔑 Scopes: ${scopes.join(', ')}`, 'sys');
+
+    if(!scopes.includes('trade')){
+      log('⚠️ WARNING: Token does not have "Trade" permission!', 'loss');
+      setConnStatus('err', '❌ Token එකට "Trade" permission නෑ!');
+      return;
+    }
+
+    // Subscribe to ticks
+    subscribeTicks();
+    // Subscribe to balance updates
+    wsSend({ balance: 1, subscribe: 1 });
+  }
+
+  // Balance update
+  if(msg.msg_type === 'balance'){
+    document.getElementById('balanceVal').textContent = `${msg.balance.balance} ${msg.balance.currency}`;
+  }
+
+  // Tick stream
+  if(msg.msg_type === 'tick'){
+    handleTick(msg.tick);
+  }
+
+  // Buy response (contract placed)
+  if(msg.msg_type === 'buy'){
+    if(msg.buy){
+      const cid = msg.buy.contract_id;
+      const ref = pendingContracts[msg.echo_req.passthrough?.ref];
+      log(`📋 Contract placed: #${cid} | ${msg.echo_req.passthrough?.side || '?'} | $${msg.buy.buy_price}`, 'sys');
+      // Subscribe to contract updates
+      wsSend({ proposal_open_contract: 1, contract_id: cid, subscribe: 1 });
+    }
+  }
+
+  // Contract result
+  if(msg.msg_type === 'proposal_open_contract'){
+    const c = msg.proposal_open_contract;
+    if(c.is_sold || c.status === 'won' || c.status === 'lost'){
+      handleContractResult(c);
+    }
+  }
+}
+
+// ── Tick Handler ──
+function handleTick(tick){
+  const price = parseFloat(tick.quote);
+  const prev  = ticks.length > 0 ? ticks[ticks.length-1] : price;
+
+  ticks.push(price);
+  if(ticks.length > 100) ticks.shift(); // keep rolling 100
+
+  // Update live price display
+  document.getElementById('livePrice').textContent = price.toFixed(2);
+  document.getElementById('kpiPrice').textContent  = price.toFixed(2);
+  const diff = price - prev;
+  const pc   = document.getElementById('priceChange');
+  pc.textContent = (diff >= 0 ? '▲ +' : '▼ ') + diff.toFixed(4);
+  pc.className   = 'price-change ' + (diff >= 0 ? 'up' : 'down');
+
+  // BB Calculation
+  const bb = calcBB(ticks, BB_PERIOD, BB_STD);
+  if(!bb){ log('📊 Collecting ticks for BB… (' + ticks.length + '/' + BB_PERIOD + ')', 'sys'); return; }
+
+  const w = parseFloat(bb.width.toFixed(4));
+  document.getElementById('kpiBB').textContent   = w.toFixed(4);
+  document.getElementById('bbGaugeFill').style.width = Math.min(100, (w / 2) * 100) + '%';
+
+  log(`📊 Tick: ${price.toFixed(2)} | BB Width: ${w.toFixed(4)} | Stake/side: $${state.stake.toFixed(2)} | P&L: ${fmt(state.sessionPnl)}`, 'info');
+
+  if(!botRunning || cooldown) return;
+
+  // SL / TP check
+  if(state.sessionPnl <= SL){
+    log('🛑 STOP LOSS HIT ($4.00) — Session ended.', 'loss');
+    stopBot(true); return;
+  }
+  if(state.sessionPnl >= TP){
+    log('🎯 TAKE PROFIT HIT ($2.00) — Daily target reached!', 'win');
+    stopBot(true); return;
+  }
+
+  // BB Filter
+  if(w < BB_THRESHOLD){
+    document.getElementById('marketState').className = 'state-badge paused';
+    document.getElementById('marketState').textContent = '⏸ Sideways — Paused';
+    return;
+  }
+
+  // BREAKOUT — fire dual contracts
+  document.getElementById('marketState').className = 'state-badge active';
+  document.getElementById('marketState').textContent = '✅ Breakout — Placing…';
+  log('✅ BB EXPANDED — Placing dual Higher/Lower contracts…', 'sys');
+
+  placeDualContracts(price);
+}
+
+// ── Place Dual Contracts ──
+function placeDualContracts(currentPrice){
+  cooldown = true; // prevent re-entry while contracts are live
+
+  const ref_h = 'H_' + Date.now();
+  const ref_l = 'L_' + Date.now();
+
+  // Contract A — HIGHER
+  wsSend({
+    buy: 1,
+    price: state.stake,
+    parameters: {
+      contract_type: 'CALL',
+      symbol: SYMBOL,
+      duration: DURATION_T,
+      duration_unit: 't',
+      basis: 'stake',
+      amount: state.stake,
+      currency: 'USD',
+      barrier: '+' + BARRIER_UP,
+    },
+    passthrough: { ref: ref_h, side: 'HIGHER' }
+  });
+
+  // Contract B — LOWER
+  wsSend({
+    buy: 1,
+    price: state.stake,
+    parameters: {
+      contract_type: 'PUT',
+      symbol: SYMBOL,
+      duration: DURATION_T,
+      duration_unit: 't',
+      basis: 'stake',
+      amount: state.stake,
+      currency: 'USD',
+      barrier: '' + BARRIER_DN,
+    },
+    passthrough: { ref: ref_l, side: 'LOWER' }
+  });
+
+  state.rounds++;
+  document.getElementById('kpiRounds').textContent = state.rounds;
+
+  // Update UI to pending
+  document.getElementById('cardHigher').className = 'contract-card';
+  document.getElementById('cardLower').className  = 'contract-card';
+  document.getElementById('resultHigh').className = 'cc-result pending';
+  document.getElementById('resultLow').className  = 'cc-result pending';
+  document.getElementById('resultHigh').textContent = '⏳ Live…';
+  document.getElementById('resultLow').textContent  = '⏳ Live…';
+}
+
+// ── Contract Result Handler ──
+let roundResults = [];
+function handleContractResult(c){
+  const won  = c.status === 'won';
+  const profit = parseFloat(c.profit);
+  const side   = c.contract_type === 'CALL' ? 'HIGHER' : 'LOWER';
+
+  roundResults.push({ won, profit, side });
+
+  // Update card
+  if(side === 'HIGHER'){
+    document.getElementById('cardHigher').className = 'contract-card ' + (won?'win':'lose');
+    document.getElementById('resultHigh').className = 'cc-result ' + (won?'win':'lose');
+    document.getElementById('resultHigh').textContent = won ? `● WIN +$${profit.toFixed(2)}` : `● LOSS -$${state.stake.toFixed(2)}`;
+  } else {
+    document.getElementById('cardLower').className  = 'contract-card ' + (won?'win':'lose');
+    document.getElementById('resultLow').className  = 'cc-result ' + (won?'win':'lose');
+    document.getElementById('resultLow').textContent = won ? `● WIN +$${profit.toFixed(2)}` : `● LOSS -$${state.stake.toFixed(2)}`;
+  }
+
+  // Wait for both contracts to settle
+  if(roundResults.length >= 2){
+    const totalProfit = roundResults.reduce((a,b)=>a+b.profit, 0);
+    state.sessionPnl += totalProfit;
+    roundResults = [];
+
+    log(`📈 Round P&L: ${fmt(totalProfit)} | Session Total: ${fmt(state.sessionPnl)}`, totalProfit > 0 ? 'win' : 'loss');
+
+    if(totalProfit > 0){
+      state.wins++;
+      state.consecLoss = 0;
+      state.stake = INITIAL_STAKE;
+      log('✅ WIN — Resetting stake to $0.50. Cooling down 10s…', 'win');
+      document.getElementById('marketState').className = 'state-badge cooldown';
+      document.getElementById('marketState').textContent = '⏳ Cooldown 10s';
+      setTimeout(() => {
+        cooldown = false;
+        if(botRunning){
+          document.getElementById('marketState').className = 'state-badge active';
+          document.getElementById('marketState').textContent = '✅ Ready';
+        }
+      }, COOLDOWN_MS);
+    } else {
+      state.losses++;
+      state.consecLoss++;
+      state.stake = parseFloat((state.stake * MARTINGALE).toFixed(2));
+      log(`❌ DUAL LOSS — Applying 2.1x Martingale. Next stake: $${state.stake.toFixed(2)}/side`, 'loss');
+      cooldown = false;
+    }
+
+    updateKPIs();
+  }
+}
+
+// ── Subscribe Ticks ──
+function subscribeTicks(){
+  wsSend({ ticks: SYMBOL, subscribe: 1 });
+  log('📡 Subscribed to Vol 100 (1s) tick stream…', 'sys');
+}
+
+// ── Bot Controls ──
+function startBot(){
+  botRunning = true;
+  cooldown   = false;
+  document.getElementById('btnStart').disabled = true;
+  document.getElementById('btnStop').disabled  = false;
+  document.getElementById('statusText').textContent = 'BOT RUNNING';
+  log('▶ Bot STARTED — BB(20,2) filter active | Stake: $0.50/side | SL: $4 | TP: $2', 'win');
+}
+
+function stopBot(auto=false){
+  botRunning = false;
+  document.getElementById('btnStart').disabled = false;
+  document.getElementById('btnStop').disabled  = true;
+  document.getElementById('marketState').className = 'state-badge stopped';
+  document.getElementById('marketState').textContent = '■ Stopped';
+  if(!auto) log('■ Bot manually stopped.', 'warn');
+}
+
+function resetAll(){
+  stopBot();
+  state = { sessionPnl:0, stake:INITIAL_STAKE, wins:0, losses:0, consecLoss:0, rounds:0 };
+  roundResults = [];
+  ticks = [];
+  document.getElementById('console').innerHTML = '';
+  document.getElementById('cardHigher').className = 'contract-card';
+  document.getElementById('cardLower').className  = 'contract-card';
+  document.getElementById('resultHigh').className = 'cc-result pending';
+  document.getElementById('resultLow').className  = 'cc-result pending';
+  document.getElementById('resultHigh').textContent = '● Pending';
+  document.getElementById('resultLow').textContent  = '● Pending';
+  document.getElementById('marketState').className = 'state-badge paused';
+  document.getElementById('marketState').textContent = '⏸ Awaiting Data';
+  updateKPIs();
+  log('↺ Session reset.', 'sys');
+}
+
+// ── KPI Update ──
+function fmt(n){ return (n>=0?'+':'')+n.toFixed(2); }
+function updateKPIs(){
+  const pnlEl = document.getElementById('kpiPnl');
+  pnlEl.textContent = (state.sessionPnl>=0?'+':'-')+'$'+Math.abs(state.sessionPnl).toFixed(2);
+  pnlEl.className   = 'kpi-val ' + (state.sessionPnl>0?'pos':state.sessionPnl<0?'neg':'');
+  document.getElementById('kpiStake').textContent = '$'+state.stake.toFixed(2);
+  document.getElementById('kpiRounds').textContent = state.rounds;
+  document.getElementById('winCount').textContent  = state.wins;
+  document.getElementById('lossCount').textContent = state.losses;
+  document.getElementById('consecLoss').textContent = state.consecLoss;
+  const wr = state.rounds>0?((state.wins/state.rounds)*100).toFixed(1)+'%':'—';
+  document.getElementById('winRate').textContent = wr;
+  document.getElementById('kpiWR').textContent   = 'Win Rate: '+wr;
+
+  const tpPct = Math.min(100,Math.max(0,(state.sessionPnl/TP)*100));
+  const slPct = Math.min(100,Math.max(0,(-state.sessionPnl/Math.abs(SL))*100));
+  document.getElementById('tpBar').style.width = tpPct+'%';
+  document.getElementById('slBar').style.width = slPct+'%';
+  document.getElementById('tpLabel').textContent = fmt(state.sessionPnl)+' / $'+TP.toFixed(2);
+  document.getElementById('slLabel').textContent = '$'+Math.abs(Math.min(0,state.sessionPnl)).toFixed(2)+' / $'+Math.abs(SL).toFixed(2);
+
+  const steps = document.querySelectorAll('.mart-step');
+  steps.forEach((s,i)=>{
+    s.classList.remove('active','done');
+    const ss = INITIAL_STAKE * Math.pow(MARTINGALE,i);
+    s.textContent = '$'+ss.toFixed(2);
+    if(Math.abs(state.stake-ss)<0.01) s.classList.add('active');
+    else if(ss<state.stake) s.classList.add('done');
+  });
+}
+
+function setConnStatus(type, msg){
+  const dot = document.getElementById('connDot');
+  dot.className = 'conn-dot ' + (type==='live'?'live':type==='connecting'?'connecting':'err');
+  document.getElementById('connMsg').textContent = msg;
+}
+
+// Init
+updateKPIs();
+log('System ready. Token paste කරලා Connect click කරන්න.', 'sys');
+log('Asset: Volatility 100 (1s) | BB(20,2) | SL: $4.00 | TP: $2.00', 'sys');
+</script>
+</body>
+</html>
