@@ -383,12 +383,15 @@ function calcBB(prices, period, std){
 
 // ── Connect to Deriv ──
 function connectDeriv(){
-  apiToken = document.getElementById('tokenInput').value.trim();
+  // Extract and strictly clean the token (only alphanumeric characters)
+  let rawToken = document.getElementById('tokenInput').value;
+  apiToken = rawToken.replace(/[^a-zA-Z0-9]/g, '');
+  
   if(!apiToken){ setConnStatus('err', '⚠ Token එකක් paste කරන්න!'); return; }
 
   // Basic validation to check if it looks like a token
   if(apiToken.length < 8){
-    setConnStatus('err', '❌ Invalid token format — check කරලා ආයෙත් paste කරන්න');
+    setConnStatus('err', `❌ Invalid token format (Length: ${apiToken.length})`);
     return;
   }
 
