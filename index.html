@@ -354,6 +354,7 @@ let ticks = [];           // rolling price history for BB calc
 let botRunning = false;
 let cooldown = false;
 let pendingContracts = {};
+let connectionError = false; // prevent onclose from overwriting real errors
 
 let state = {
   sessionPnl: 0, stake: INITIAL_STAKE,
@@ -395,12 +396,14 @@ function connectDeriv(){
     return;
   }
 
+  connectionError = false;
   setConnStatus('connecting', '🔄 Connecting to Deriv…');
   document.getElementById('btnConnect').disabled = true;
 
   let appId = document.getElementById('appIdInput').value.trim();
   if(!appId) appId = '1089';
   const derivWsUrl = `wss://ws.binaryws.com/websockets/v3?app_id=${appId}`;
+  log(`🔍 Using App ID: ${appId} | Token length: ${apiToken.length}`, 'sys');
 
   try {
     ws = new WebSocket(derivWsUrl);
@@ -428,13 +431,16 @@ function connectDeriv(){
   };
 
   ws.onclose = () => {
-    setConnStatus('err', '⚡ Connection closed');
     document.getElementById('statusDot').className = 'status-dot';
     document.getElementById('statusText').textContent = 'DISCONNECTED';
     document.getElementById('btnConnect').disabled = false;
     document.getElementById('btnDisconnect').disabled = true;
     document.getElementById('btnStart').disabled = true;
     botRunning = false;
+    // Only show "connection closed" if no real error already shown
+    if(!connectionError){
+      setConnStatus('err', '⚡ Connection closed');
+    }
   };
 }
 
@@ -459,14 +465,16 @@ function handleMessage(msg){
     const errCode = msg.error.code || 'Unknown';
     const errMsg = msg.error.message || 'No details provided';
     log(`❌ API Error [${errCode}]: ${errMsg}`, 'loss');
+    connectionError = true; // prevent onclose overwriting this message
 
     if(errCode === 'InvalidToken'){
-      setConnStatus('err', '❌ Invalid token — token එක හරියට copy වුණාද බලන්න');
+      setConnStatus('err', `❌ Invalid token [${errCode}] — Deriv API Token Check කරන්න`);
     } else if(errCode === 'AuthorizationRequired'){
       setConnStatus('err', '❌ Authorization required — token එකක් අවශ්‍යයි');
     } else {
-      setConnStatus('err', `❌ Error: ${errCode}`);
+      setConnStatus('err', `❌ Error: ${errCode} — ${errMsg}`);
     }
+
     document.getElementById('btnConnect').disabled = false;
     return;
   }
