@@ -415,8 +415,8 @@ async function connectDerivPAT(token, appId){
   setConnStatus('connecting', '🔄 Fetching Deriv accounts via proxy…');
 
   try {
-    // Call our serverless proxy (avoids CORS issues)
-    const proxyRes = await fetch('/api/connect', {
+    // Call our serverless proxy (avoids CORS issues). Using absolute URL so it works locally too.
+    const proxyRes = await fetch('https://dual-barrier-hedge.vercel.app/api/connect', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token, appId, preferDemo: true })
